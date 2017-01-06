@@ -24,7 +24,7 @@ partitionNEEGL=function(
 ## MM, TW
 ##references<<
 ## Lasslop G, Reichstein M, Papale D, et al. (2010) Separation of net ecosystem exchange into assimilation and respiration using 
-## a light response curve approach: critical issues and global evaluation. Global Change Biology, Volume 16, Issue 1, Pages 187208
+## a light response curve approach: critical issues and global evaluation. Global Change Biology, Volume 16, Issue 1, Pages 187-208
 {
 	'Partitioning of measured net ecosystem fluxes into gross primary production (GPP) and ecosystem respiration (Reco) using Lasslop et al., 2010'
 	# Check if specified columns exist in sDATA or sTEMP and if numeric and plausible. Then apply quality flag
