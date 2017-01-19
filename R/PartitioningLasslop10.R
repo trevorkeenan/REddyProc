@@ -661,7 +661,7 @@ partGLFitLRCOneWindow=function(
 # if( DayStart.i > 72 ) recover()		
 	sdE0 <- E0Win$sdE0[winInfo$iWindow]
 	RRefNight <- E0Win$RRef[winInfo$iWindow]
-	#
+	if( is.na(RRefNight) )RRefNight<-mean(E0Win$RRef,na.rm = TRUE)
 	##seealso<< \code{\link{partGLFitLRC}}
 	resOpt <- resOpt0 <- partGLFitLRC(dsDay, E0=E0, sdE0=sdE0, RRefNight=RRefNight
 			, controlGLPart=controlGLPart, lastGoodParameters=prevRes$lastGoodParameters)
@@ -735,7 +735,7 @@ partGLFitLRC <- function(
 			,beta=as.vector(abs(quantile(dsDay$NEE, 0.03, na.rm=TRUE)-quantile(dsDay$NEE, 0.97, na.rm=TRUE)))
 			,alpha=0.1
 			#,R_ref=mean(NEENight.V.n, na.rm=T)
-			,R_ref=if( is.finite(RRefNight) ) as.vector(RRefNight) else stop("must provide finite RRefNight") #mean(NEENight.V.n, na.rm=T)
+			,R_ref=if( is.finite(RRefNight) ) as.vector(RRefNight) else as.vector(RRefNight<-0) #stop("must provide finite RRefNight") #mean(NEENight.V.n, na.rm=T)
 			,E_0=as.vector(E0)
 	)   #theta [numeric] -> parameter vector (theta[1]=kVPD, theta[2]-beta0, theta[3]=alfa, theta[4]=Rref)
 	#twutz: beta is quite well defined, so try not changing it too much
