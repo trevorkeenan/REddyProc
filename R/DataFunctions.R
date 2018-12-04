@@ -624,7 +624,7 @@ fCheckColPlausibility <- function(
     if( grepl('VPD', VarName.V.s[v.i]) ) 
     {
       fCheckOutsideRange(Data.F, VarName.V.s[v.i], c('<', 0), SubCallFunc.s)
-      fCheckOutsideRange(Data.F, VarName.V.s[v.i], c('>', 50), SubCallFunc.s)
+      fCheckOutsideRange(Data.F, VarName.V.s[v.i], c('>', 100), SubCallFunc.s)
     }
     ## 'Rh' - relative humidity in %
     if( grepl('Rh', VarName.V.s[v.i]) ) 

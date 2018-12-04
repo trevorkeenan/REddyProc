@@ -10,7 +10,7 @@
 #TEST: sDATA <- EddyProc.C$sDATA; sTEMP <- EddyProc.C$sTEMP
 
 #++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-sEddyProc$methods(
+sEddyProc2$methods(
 		sGLFluxPartition=function(
 				##title<<
 				## sGLFluxPartition - Flux partitioning after Lasslop et al. (2010)
@@ -30,7 +30,7 @@ sEddyProc$methods(
 			## MM, TW
 			##references<<
 			## Lasslop G, Reichstein M, Papale D, et al. (2010) Separation of net ecosystem exchange into assimilation and respiration using 
-			## a light response curve approach: critical issues and global evaluation. Global Change Biology, Volume 16, Issue 1, Pages 187-208
+			## a light response curve approach: critical issues and global evaluation. Global Change Biology, Volume 16, Issue 1, Pages 187?208
 			.self$sCalcPotRadiation(useSolartime.b=!isTRUE(debug.l$useLocaltime.b) )	
 			dsAns <- partitionNEEGL( cbind(sDATA, sTEMP), ...
 					, nRecInDay=sINFO$DTS
@@ -46,7 +46,7 @@ sEddyProc$methods(
 			## Flux partitioning results are in sTEMP data frame of the class.
 		})
 
-sEddyProc$methods(
+sEddyProc2$methods(
 		sMRFluxPartition = function(
 				##title<<
 				## sEddyProc$sMRFluxPartition - Flux partitioning after Reichstein et al. (2005)
@@ -59,6 +59,7 @@ sEddyProc$methods(
 				,QFTempVar.s='Tair_fqc'##<< Quality flag of filled temperature variable
 				,QFTempValue.n=0       ##<< Value of temperature quality flag for _good_ (original) data
 				,RadVar.s='Rg'         ##<< Unfilled (original) radiation variable
+				,Rref_dayVar.s='Rref_day'         ##<< TK previously id'd Rref day var
 				,Lat_deg.n             ##<< Latitude in (decimal) degrees
 				,Long_deg.n            ##<< Longitude in (decimal) degrees
 				,TimeZone_h.n          ##<< Time zone (in hours)
@@ -109,11 +110,10 @@ sEddyProc$methods(
 			# Check if specified columns exist in sDATA or sTEMP and if numeric and plausible. Then apply quality flag
 			# TODO: avoid repeated cbind
 			# TODO: checking column names this does not need a full combined data.frame
-			fCheckColNames(cbind(sDATA,sTEMP), c(FluxVar.s, QFFluxVar.s, TempVar.s, QFTempVar.s, RadVar.s), 'sMRFluxPartition')
-			fCheckColNum(cbind(sDATA,sTEMP), c(FluxVar.s, QFFluxVar.s, TempVar.s, QFTempVar.s, RadVar.s), 'sMRFluxPartition')
-			fCheckColPlausibility(cbind(sDATA,sTEMP), c(FluxVar.s, QFFluxVar.s, TempVar.s, QFTempVar.s, RadVar.s), 'sMRFluxPartition')
+			fCheckColNames(cbind(sDATA,sTEMP), c(FluxVar.s, QFFluxVar.s, TempVar.s, QFTempVar.s, RadVar.s,Rref_dayVar.s), 'sMRFluxPartition')
+			fCheckColNum(cbind(sDATA,sTEMP), c(FluxVar.s, QFFluxVar.s, TempVar.s, QFTempVar.s, RadVar.s,Rref_dayVar.s), 'sMRFluxPartition')
+			fCheckColPlausibility(cbind(sDATA,sTEMP), c(FluxVar.s, QFFluxVar.s, TempVar.s, QFTempVar.s, RadVar.s,Rref_dayVar.s), 'sMRFluxPartition')
 			Var.V.n <- fSetQF(cbind(sDATA,sTEMP), FluxVar.s, QFFluxVar.s, QFFluxValue.n, 'sMRFluxPartition')
-			
 			message('Start flux partitioning for variable ', FluxVar.s, ' with temperature ', TempVar.s, '.')
 			
 			##details<< \describe{\item{Selection of daytime data based on solar time}{
@@ -149,9 +149,20 @@ sEddyProc$methods(
 			
 			# Reanalyse R_ref with E_0 fixed
 			sTEMP$R_ref_NEW <<- .self$sRegrRref('FP_VARnight', 'FP_Temp_NEW', 'E_0_NEW', T_ref.n=T_ref.n, CallFunction.s='sMRFluxPartition')
-			
+	
 			# Calculate the ecosystem respiration Reco
+			# night-time based Reco
 			sTEMP$Reco_NEW <<- fLloydTaylor(sTEMP$R_ref_NEW, sTEMP$E_0_NEW, fConvertCtoK(cbind(sDATA,sTEMP)[,TempVar.s]), T_ref.n=T_ref.n)
+  		# day-time based Reco
+			sTEMP$Reco_NEWday <<- fLloydTaylor(Rref_day, sTEMP$E_0_NEW, fConvertCtoK(cbind(sDATA,sTEMP)[,TempVar.s]), T_ref.n=T_ref.n)
+			
+			# merge Reco_New and Reco_NEWday with Reco_NEWday for day-time and Reco_NEW for night-time
+			indX<-sDATA[,RadVar.s] > 10 | sTEMP$PotRad_NEW > 0
+			Reco_merged	<- sTEMP$Reco_NEW
+			Reco_merged[indX]<-sTEMP$Reco_NEWday[indX]
+			
+			# now put the merged Reco into sTEMP$Reco_NEW to feed through the rest of the processing
+			sTEMP$Reco_NEW <<- Reco_merged
 			attr(sTEMP$Reco_NEW, 'varnames') <<- 'Reco'
 			attr(sTEMP$Reco_NEW, 'units') <<- attr(Var.V.n, 'units')
 			
@@ -192,7 +203,7 @@ sEddyProc$methods(
 			## -111 if regression of E_0 failed due to insufficient relationship in the data.
 })
 
-sEddyProc$methods(
+sEddyProc2$methods(
 	sCalcPotRadiation = function(
 			### compute potential radiation from position and time
 			useSolartime.b=TRUE	##<< by default corrects hour (given in local winter time) for latitude to solar time
@@ -397,7 +408,7 @@ fRegrE0fromShortTerm = function(
 }
 
 
-sEddyProc$methods(
+sEddyProc2$methods(
   sRegrE0fromShortTerm = function(
     ##title<<
     ## sEddyProc$sRegrE0fromShortTerm - Estimation of the temperature sensitivity E_0
@@ -464,7 +475,7 @@ sEddyProc$methods(
 
 #++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
-sEddyProc$methods(
+sEddyProc2$methods(
   sRegrRref = function(
     ##title<<
     ## sEddyProc$sRegrRref - Estimation of the time series of reference respiration Rref 

@@ -21,10 +21,11 @@ partitionNEEGL=function(
 ##description<<
 ## daytime-based partitioning of measured net ecosystem fluxes into gross primary production (GPP) and ecosystem respiration (Reco)
 ##author<<
-## MM, TW
+## TK modified from PartitioningLasslop10.R (MM, TW)
 ##references<<
 ## Lasslop G, Reichstein M, Papale D, et al. (2010) Separation of net ecosystem exchange into assimilation and respiration using 
 ## a light response curve approach: critical issues and global evaluation. Global Change Biology, Volume 16, Issue 1, Pages 187-208
+## Keenan et al. 2019 Nature Ecology and Evolution 
 {
 	'Partitioning of measured net ecosystem fluxes into gross primary production (GPP) and ecosystem respiration (Reco) using Lasslop et al., 2010'
 	# Check if specified columns exist in sDATA or sTEMP and if numeric and plausible. Then apply quality flag
@@ -62,7 +63,7 @@ partitionNEEGL=function(
 	# Filter night time values only
 	#! Note: Rg <= 4 congruent with Lasslop et al., 2010 to define Night for the calculation of E_0.n
 	# Should be unfilled (original) radiation variable, therefore dataframe set to sDATA only
-	isNight <- (ds[,RadVar.s] <= 4 & ds[[PotRadVar.s]] == 0) 
+	isNight <- (ds[,RadVar.s] <= 4 & ds[[PotRadVar.s]] == 0)
 
 	dsAns$FP_VARnight <- ifelse(isNight, Var.V.n, NA)
 	attr(dsAns$FP_VARnight, 'varnames') <- paste(attr(Var.V.n, 'varnames'), '_night', sep='')
@@ -113,6 +114,7 @@ partitionNEEGL=function(
 	# default is isAssociateParmsToMeanOfValids=TRUE (double check partGLControl argument)
 	colNameAssoc <- if( isTRUE(controlGLPart$isAssociateParmsToMeanOfValids) ) "iMeanRec" else "iCentralRec"
 	# for the output, always report at central record
+#browser()
 	dsAns[resParms$summary$iCentralRec,c("FP_R_refNight","FP_E0","FP_R_ref","FP_alpha","FP_beta","FP_k","FP_qc")] <- 
 					resParms$summary[,c("R_ref_night","E_0","R_ref","a","b","k","parms_out_range")]
 	matchFP_qc <- NA_integer_; matchFP_qc[resParms$summary[[colNameAssoc]] ] <- resParms$summary$parms_out_range	# here maybe indexed by meanRec
@@ -124,6 +126,8 @@ partitionNEEGL=function(
 					, resParms
 					, controlGLPart=controlGLPart
 			)
+	# add filled R_ref_day to the output matrix
+	dsAns$FP_R_refDayFilled<-dsAnsFluxes$Rday
 	# set quality flag to 2 where next parameter estimate is more than 14 days away 
 	dsAns$FP_dRecPar <- dsAnsFluxes$dRecNextEstimate
 	dDaysPar <- round(dsAns$FP_dRecPar / nRecInDay)
@@ -554,7 +558,7 @@ partGLSmoothTempSens <- function(
 	# testing: E0Win <- do.call( rbind, lapply(0:4,function(i){tmp<-E0Win; tmp$dayStart <- tmp$dayStart+i*365; tmp}))
 	E0Win$year <- ceiling(E0Win$dayStart/365)
 	yr <- E0Win$year[1]
-	resWin <- lapply( unique(E0Win$year), function(yr){
+	    resWin <- lapply( unique(E0Win$year), function(yr){
 				E0WinYr <- E0Win[ E0Win$year == yr, ,drop=FALSE]
 				isFiniteE0 <- is.finite(E0WinYr$E0)
 				E0WinFinite <- E0WinYr[ isFiniteE0, ]
@@ -569,7 +573,7 @@ partGLSmoothTempSens <- function(
 				E0WinYr$E0 <- pred1$fit
 				E0WinYr$sdE0 <- pred1$se.fit + sqrt(nugget)
 				E0WinYr
-	})	
+	    })
 	##value<< dataframe E0Win with updated columns E0 and sdE0
 #recover()	
 	ans <- do.call(rbind,resWin)
@@ -1334,14 +1338,20 @@ partGLInterpolateFluxes <- function(
 	colNameAssoc <- if( isTRUE(controlGLPart$isAssociateParmsToMeanOfValids) ) "iMeanRec" else "iCentralRec" 
 	dsAssoc <- .partGPAssociateSpecialRows(summaryLRC[[colNameAssoc]],nRec)
 	# now we have iBefore and iAfter
+	# added R_ref_night to the list here. TK
 	dsBefore <- merge( 
 			structure(data.frame(dsAssoc$iSpecialBefore, dsAssoc$iBefore),names=c("iParRec",colNameAssoc))
-			, summaryLRC[,c(colNameAssoc,"R_ref","E_0","a","b","k")]
+			, summaryLRC[,c(colNameAssoc,"R_ref","E_0","a","b","k","R_ref_night")]
 			)
-	dsAfter  <- merge( structure(data.frame(dsAssoc$iSpecialAfter, dsAssoc$iAfter),names=c("iParRec",colNameAssoc)), summaryLRC[,c(colNameAssoc,"R_ref","E_0","a","b","k")])
+	# added R_ref_night here. TK 
+	dsAfter  <- merge( structure(data.frame(dsAssoc$iSpecialAfter, dsAssoc$iAfter),names=c("iParRec",colNameAssoc)), summaryLRC[,c(colNameAssoc,"R_ref","E_0","a","b","k","R_ref_night")])
+	
 	if( (nrow(dsBefore) != nRec) || (nrow(dsAfter) != nRec)) stop("error in merging parameters to original records.")
 	Reco2 <- lapply( list(dsBefore,dsAfter), function(dsi){
 		tmp <- fLloydTaylor(dsi$R_ref, dsi$E_0, Temp_Kelvin, T_ref.n=273.15+15)
+	})
+	Reco2b <- lapply( list(dsBefore,dsAfter), function(dsi){
+	  tmp <- fLloydTaylor(dsi$R_ref_night, dsi$E_0, Temp_Kelvin, T_ref.n=273.15+15)
 	})
 	#dsi <- dsBefore
 	GPP2 <- lapply( list(dsBefore,dsAfter), function(dsi){
@@ -1349,12 +1359,24 @@ partGLInterpolateFluxes <- function(
 				tmp <- partGL_RHLightResponse(theta, Rg, VPD, Temp=Temp)$GPP
 		})
 	# interpolate between previous and next fit, weights already sum to 1
-	Reco <- (dsAssoc$wBefore*Reco2[[1]] + dsAssoc$wAfter*Reco2[[2]]) #/ (dsAssoc$wBefore+dsAssoc$wAfter)  
+	tmpRday<-list(dsBefore$R_ref,dsAfter$R_ref)
+	RdayFilled <- (dsAssoc$wBefore*tmpRday[[1]] + dsAssoc$wAfter*tmpRday[[2]]) #/ (dsAssoc$wBefore+dsAssoc$wAfter)  
+	# 1. Reco calculated with day-time derived Rref
+	Reco_a <- (dsAssoc$wBefore*Reco2[[1]] + dsAssoc$wAfter*Reco2[[2]]) #/ (dsAssoc$wBefore+dsAssoc$wAfter)  
+	# 2. Reco calculated with night-time derived Rref
+	Reco_b <- (dsAssoc$wBefore*Reco2b[[1]] + dsAssoc$wAfter*Reco2b[[2]]) #/ (dsAssoc$wBefore+dsAssoc$wAfter)  
+
+	# merge Reco_a and Reco_b with Reco_a for day-time and Reco_b for night-time
+	indX<-Rg==0 # NOTE defining night time as Rg = 0 here
+  Reco_merged	<- Reco_a
+  Reco_merged[indX]<-Reco_b[indX]
+  
 	GPP <- (dsAssoc$wBefore*GPP2[[1]] + dsAssoc$wAfter*GPP2[[2]]) #/ (dsAssoc$wBefore+dsAssoc$wAfter)
 #recover()  # to inspect the deviations between successive estimates	
 	ans <- ansPred <- data.frame(
-			Reco = Reco
+			Reco = Reco_merged
 			,GPP = GPP
+			,Rday=RdayFilled
 	)
 	if( isTRUE(controlGLPart$isSdPredComputed)){
 		varPred2 <- lapply( list(dsBefore,dsAfter), function(dsi){
